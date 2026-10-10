@@ -1,6 +1,7 @@
-"""Offline charge-limit number entity tests."""
+"""Offline number entity tests."""
 
 import asyncio
+from datetime import timedelta
 import importlib.util
 from pathlib import Path
 import sys
@@ -21,7 +22,12 @@ def load_number_module(monkeypatch):
         def available(self):
             return self.coordinator.last_update_success
 
+    class NumberEntity:
+        def async_write_ha_state(self):
+            pass
+
     class NumberMode:
+        BOX = "box"
         SLIDER = "slider"
 
     class NumberEntityDescription:
@@ -48,13 +54,16 @@ def load_number_module(monkeypatch):
     )}
     modules["number_test"].__path__ = [str(ROOT)]
     modules["number_test.const"].DOMAIN = "mazda_6e"
+    modules["number_test.const"].MIN_POLL_INTERVAL = 60
+    modules["number_test.const"].MAX_POLL_INTERVAL = 3600
     modules["number_test.api"].MazdaApiError = type("MazdaApiError", (Exception,), {})
     modules["number_test.entity"].Mazda6eEntity = Mazda6eEntity
-    modules["homeassistant.components.number"].NumberEntity = object
+    modules["homeassistant.components.number"].NumberEntity = NumberEntity
     modules["homeassistant.components.number"].NumberEntityDescription = NumberEntityDescription
     modules["homeassistant.components.number"].NumberMode = NumberMode
     modules["homeassistant.config_entries"].ConfigEntry = object
     modules["homeassistant.const"].PERCENTAGE = "%"
+    modules["homeassistant.const"].UnitOfTime = SimpleNamespace(SECONDS="s")
     modules["homeassistant.core"].HomeAssistant = object
     modules["homeassistant.exceptions"].HomeAssistantError = type("HomeAssistantError", (Exception,), {})
     modules["homeassistant.helpers.entity"].EntityCategory = SimpleNamespace(CONFIG="config")
@@ -68,6 +77,24 @@ def load_number_module(monkeypatch):
     monkeypatch.setitem(sys.modules, spec.name, module)
     spec.loader.exec_module(module)
     return module
+
+
+def test_poll_interval_state_and_action(monkeypatch):
+    """The polling interval entity reports and changes the coordinator interval."""
+    module = load_number_module(monkeypatch)
+    coordinator = SimpleNamespace(
+        update_interval=timedelta(seconds=60),
+        async_set_poll_interval=AsyncMock(),
+    )
+    entry = SimpleNamespace(entry_id="test-entry")
+    entity = module.Mazda6ePollInterval(coordinator, entry)
+
+    assert entity.native_value == 60
+    assert entity.suggested_object_id == "mazda_6e_poll_interval"
+
+    asyncio.run(entity.async_set_native_value(300.0))
+
+    coordinator.async_set_poll_interval.assert_awaited_once_with(300)
 
 
 def test_charge_limit_state_availability_and_action(monkeypatch):
