@@ -1,5 +1,6 @@
 DOMAIN = "mazda_6e"
 CONF_CONTROL_PIN = "control_pin"
+CONF_POLL_INTERVAL = "poll_interval"
 REGION_EUROPE = "europe"
 REGION_ASIA = "asia"
 
@@ -8,6 +9,8 @@ PUB_KEY = "MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCRYk7lZkHwHCJo8sSoKs5UuD/Jh9j7P
 DEVICE_NAME = "iPhone 17 Pro"
 
 UPDATE_INTERVAL = 60  # Sekunden
+MIN_POLL_INTERVAL = 60
+MAX_POLL_INTERVAL = 3600
 
 BASE_EU = "https://cma-m.iov.changanauto.com.de/cma-app-gw"
 BASE_ASIA = "https://cma.iov.changanauto.sg/cma-app-gw"
