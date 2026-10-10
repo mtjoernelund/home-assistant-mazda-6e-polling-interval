@@ -6,7 +6,13 @@ from collections.abc import Callable
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.exceptions import ConfigEntryAuthFailed
 
-from .const import DOMAIN, UPDATE_INTERVAL
+from .const import (
+    CONF_POLL_INTERVAL,
+    DOMAIN,
+    MAX_POLL_INTERVAL,
+    MIN_POLL_INTERVAL,
+    UPDATE_INTERVAL,
+)
 from .models import Mazda6eVehicle
 from .api import MazdaApiError
 
@@ -16,17 +22,53 @@ _LOGGER = logging.getLogger(__name__)
 class Mazda6eCoordinator(DataUpdateCoordinator):
     def __init__(self, hass, config_entry, mazda6e_api):
         """Initialize my coordinator."""
+        poll_interval = config_entry.options.get(CONF_POLL_INTERVAL, UPDATE_INTERVAL)
+        try:
+            poll_interval = int(poll_interval)
+        except (TypeError, ValueError):
+            poll_interval = UPDATE_INTERVAL
+
+        if not MIN_POLL_INTERVAL <= poll_interval <= MAX_POLL_INTERVAL:
+            poll_interval = UPDATE_INTERVAL
+
         super().__init__(
             hass,
             logger=_LOGGER,
             name=DOMAIN,
             config_entry=config_entry,
-            update_interval=timedelta(seconds=UPDATE_INTERVAL),
+            update_interval=timedelta(seconds=poll_interval),
         )
         self.api = mazda6e_api
         self._function_config: dict[int, set[str]] = {}
         self._last_vehicle_status: dict[int, object] = {}
         self._control_locks: dict[int, asyncio.Lock] = {}
+
+    async def async_set_poll_interval(self, seconds: int) -> None:
+        """Set and persist the coordinator polling interval."""
+        if not MIN_POLL_INTERVAL <= seconds <= MAX_POLL_INTERVAL:
+            raise ValueError(
+                f"Poll interval must be between {MIN_POLL_INTERVAL} "
+                f"and {MAX_POLL_INTERVAL} seconds"
+            )
+
+        self.hass.config_entries.async_update_entry(
+            self.config_entry,
+            options={
+                **self.config_entry.options,
+                CONF_POLL_INTERVAL: seconds,
+            },
+        )
+
+        current_interval = (
+            int(self.update_interval.total_seconds())
+            if self.update_interval is not None
+            else None
+        )
+        if current_interval == seconds:
+            return
+
+        self.update_interval = timedelta(seconds=seconds)
+        await self.async_request_refresh()
 
     def _get_control_lock(self, vehicle_id: int) -> asyncio.Lock:
         lock = self._control_locks.get(vehicle_id)
