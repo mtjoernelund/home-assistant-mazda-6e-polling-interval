@@ -67,6 +67,9 @@
     "number": {
       "charge_limit": {
         "name": "Charge limit"
+      },
+      "poll_interval": {
+        "name": "Polling interval"
       }
     },
     "binary_sensor": {
