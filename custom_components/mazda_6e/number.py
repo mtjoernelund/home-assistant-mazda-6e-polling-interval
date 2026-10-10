@@ -1,16 +1,28 @@
-"""Charge limit control for Mazda 6e vehicles."""
+"""Number controls for Mazda 6e."""
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription, NumberMode
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE
+from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .api import MazdaApiError
-from .const import DOMAIN
+from .const import DOMAIN, MAX_POLL_INTERVAL, MIN_POLL_INTERVAL
 from .entity import Mazda6eEntity
+
+POLL_INTERVAL_DESCRIPTION = NumberEntityDescription(
+    key="poll_interval",
+    translation_key="poll_interval",
+    icon="mdi:timer-sync",
+    entity_category=EntityCategory.CONFIG,
+    native_min_value=MIN_POLL_INTERVAL,
+    native_max_value=MAX_POLL_INTERVAL,
+    native_step=30,
+    native_unit_of_measurement=UnitOfTime.SECONDS,
+    mode=NumberMode.BOX,
+)
 
 CHARGE_LIMIT_DESCRIPTION = NumberEntityDescription(
     key="charge_limit",
@@ -30,14 +42,47 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    """Set up the charge limit control."""
+    """Set up number controls."""
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities = [Mazda6ePollInterval(coordinator, entry)]
+    entities.extend(
         Mazda6eChargeLimit(coordinator, item["vehicle"])
         for item in coordinator.data.values()
         if (item.get("status") or {}).get("charge", {}).get("maxSocPercent") is not None
         and item["vehicle"].supports("BatteryMaxSoc")
     )
+    async_add_entities(entities)
+
+
+class Mazda6ePollInterval(NumberEntity):
+    """Control how often the integration polls the Mazda cloud API."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, coordinator, entry: ConfigEntry) -> None:
+        self.coordinator = coordinator
+        self.entity_description = POLL_INTERVAL_DESCRIPTION
+        self._attr_unique_id = f"{entry.entry_id}_poll_interval"
+
+    @property
+    def suggested_object_id(self) -> str:
+        """Return a stable, descriptive default entity id."""
+        return f"{DOMAIN}_poll_interval"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the current coordinator polling interval."""
+        if self.coordinator.update_interval is None:
+            return None
+        return int(self.coordinator.update_interval.total_seconds())
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the coordinator polling interval."""
+        if not value.is_integer():
+            raise ValueError("Poll interval must be a whole number of seconds")
+        await self.coordinator.async_set_poll_interval(int(value))
+        self.async_write_ha_state()
 
 
 class Mazda6eChargeLimit(Mazda6eEntity, NumberEntity):
